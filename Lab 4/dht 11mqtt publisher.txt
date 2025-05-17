@@ -1,0 +1,32 @@
+import Adafruit_DHT
+import paho.mqtt.client as mqtt
+import time
+import json
+
+# Sensor configuration
+sensor = Adafruit_DHT.DHT11
+gpio_pin = 4  # GPIO pin where DHT11 data pin is connected
+
+# MQTT configuration
+broker = 'test.mosquitto.org'  # Change to your broker IP/domain
+port = 1883
+topic = 'iot/dht11'
+
+# Create MQTT client and connect
+client = mqtt.Client()
+client.connect(broker, port, 60)
+
+while True:
+    humidity, temperature = Adafruit_DHT.read(sensor, gpio_pin)
+
+    if humidity is not None and temperature is not None:
+        payload = {
+            "temperature": temperature,
+            "humidity": humidity
+        }
+        print(f"Publishing: {payload}")
+        client.publish(topic, json.dumps(payload))
+    else:
+        print("Sensor read failed")
+
+    time.sleep(5)

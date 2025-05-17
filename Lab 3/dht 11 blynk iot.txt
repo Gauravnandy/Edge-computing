@@ -1,0 +1,28 @@
+import Adafruit_DHT
+import time
+import BlynkLib
+
+# Blynk Auth Token (replace with your actual token)
+BLYNK_AUTH = 'Your_Blynk_Auth_Token'
+
+# Initialize Blynk
+blynk = BlynkLib.Blynk(BLYNK_AUTH)
+
+# Sensor setup
+sensor = Adafruit_DHT.DHT11
+gpio_pin = 4  # GPIO where DHT11 data pin is connected
+
+while True:
+    humidity, temperature = Adafruit_DHT.read(sensor, gpio_pin)
+
+    if humidity is not None and temperature is not None:
+        print(f"Temperature: {temperature:.1f}°C  |  Humidity: {humidity:.1f}%")
+
+        # Send data to Blynk virtual pins
+        blynk.virtual_write(0, temperature)
+        blynk.virtual_write(1, humidity)
+    else:
+        print("Failed to read data from DHT11 sensor")
+
+    blynk.run()
+    time.sleep(2)
