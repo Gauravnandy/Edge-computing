@@ -1,0 +1,174 @@
+#Training with Transfer Learning /////////////////////////////
+
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load sample dataset (e.g., Flowers)
+dataset_url = "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz"
+data_dir = tf.keras.utils.get_file(origin=dataset_url, fname='flower_photos', untar=True)
+
+# Create datasets
+batch_size = 32
+img_size = (224, 224)
+
+train_ds = tf.keras.utils.image_dataset_from_directory(
+    data_dir,
+    validation_split=0.2,
+    subset="training",
+    seed=123,
+    image_size=img_size,
+    batch_size=batch_size
+)
+
+val_ds = tf.keras.utils.image_dataset_from_directory(
+    data_dir,
+    validation_split=0.2,
+    subset="validation",
+    seed=123,
+    image_size=img_size,
+    batch_size=batch_size
+)
+
+class_names = train_ds.class_names
+num_classes = len(class_names)
+
+# Prefetching for performance
+AUTOTUNE = tf.data.AUTOTUNE
+train_ds = train_ds.prefetch(buffer_size=AUTOTUNE)
+val_ds = val_ds.prefetch(buffer_size=AUTOTUNE)
+
+# MobileNetV2 base model
+base_model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3),
+                                               include_top=False,
+                                               weights='imagenet')
+base_model.trainable = False
+
+# Build model
+model = models.Sequential([
+    base_model,
+    layers.GlobalAveragePooling2D(),
+    layers.Dense(128, activation='relu'),
+    layers.Dense(num_classes, activation='softmax')
+])
+
+# Compile model
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Train model
+history = model.fit(train_ds,
+                    validation_data=val_ds,
+                    epochs=5)
+
+# Save the Keras model
+model.save("mobilenetv2_transfer.h5")
+
+ #Part 2: Convert to TensorFlow Lite //////////////////////////////////////////////
+
+
+# convert_to_tflite.py
+
+import tensorflow as tf
+
+# Load trained model
+model = tf.keras.models.load_model("mobilenetv2_transfer.h5")
+
+# Convert to TFLite
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]  # Quantization
+tflite_model = converter.convert()
+
+# Save the TFLite model
+with open("mobilenetv2_transfer.tflite", "wb") as f:
+    f.write(tflite_model)
+
+print("TFLite model saved as mobilenetv2_transfer.tflite")
+
+#Part 3: TFLite Inference on Edge Device////////////////////////////////////////////
+
+# tflite_inference_edge.py
+
+import tflite_runtime.interpreter as tflite
+from PIL import Image
+import numpy as np
+import os
+
+# Load TFLite model
+interpreter = tflite.Interpreter(model_path="mobilenetv2_transfer.tflite")
+interpreter.allocate_tensors()
+
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# Preprocess image
+def preprocess_image(image_path):
+    img = Image.open(image_path).resize((224, 224))
+    img = np.array(img).astype(np.float32) / 255.0
+    img = np.expand_dims(img, axis=0)
+    return img
+
+# Inference function
+def classify_image(image_path, class_names):
+    img = preprocess_image(image_path)
+    interpreter.set_tensor(input_details[0]['index'], img)
+    interpreter.invoke()
+    output = interpreter.get_tensor(output_details[0]['index'])
+    pred_class = np.argmax(output[0])
+    confidence = output[0][pred_class]
+    return class_names[pred_class], confidence
+
+# Class names (update if needed)
+class_names = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips']
+
+# Test image
+image_path = "test_flower.jpg"  # replace with your image path
+label, conf = classify_image(image_path, class_names)
+print(f"Prediction: {label} ({conf:.2f} confidence)")
+
+
+#Real-Time Camera Inference///////////////////////////////
+
+# camera_realtime_inference.py
+
+import cv2
+import numpy as np
+from PIL import Image
+import tflite_runtime.interpreter as tflite
+
+interpreter = tflite.Interpreter(model_path="mobilenetv2_transfer.tflite")
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+def preprocess(frame):
+    img = cv2.resize(frame, (224, 224))
+    img = np.expand_dims(img, axis=0).astype(np.float32) / 255.0
+    return img
+
+class_names = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips']
+
+cap = cv2.VideoCapture(0)
+while True:
+    ret, frame = cap.read()
+    input_data = preprocess(frame)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    output = interpreter.get_tensor(output_details[0]['index'])[0]
+    label_id = np.argmax(output)
+    confidence = output[label_id]
+    label = class_names[label_id]
+    
+    cv2.putText(frame, f"{label}: {confidence:.2f}", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.imshow('Live Detection', frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+
+

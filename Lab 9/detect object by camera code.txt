@@ -1,0 +1,46 @@
+#define LED_PIN 7
+#define BUZZER_PIN 8
+
+String inputString = "";     // a String to hold incoming data
+bool stringComplete = false; // whether the string is complete
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  
+  digitalWrite(LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  Serial.begin(9600);
+  inputString.reserve(50); // reserve memory to avoid fragmentation
+}
+
+void loop() {
+  // When a full string is received from Raspberry Pi
+  if (stringComplete) {
+    inputString.trim(); // remove any trailing newline or spaces
+
+    if (inputString == "person") {
+      digitalWrite(LED_PIN, HIGH);
+      digitalWrite(BUZZER_PIN, HIGH);
+      delay(1000); // Alert for 1 second
+      digitalWrite(LED_PIN, LOW);
+      digitalWrite(BUZZER_PIN, LOW);
+    }
+
+    // Clear the string for the next input
+    inputString = "";
+    stringComplete = false;
+  }
+}
+
+// This function is automatically called when serial data is available
+void serialEvent() {
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    inputString += inChar;
+    if (inChar == '\n') {
+      stringComplete = true;
+    }
+  }
+}
